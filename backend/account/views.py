@@ -14,19 +14,35 @@ from rest_framework import status
 from rest_framework.response import Response
 from django.core.mail import send_mail
 from django.conf import settings
+from .permission import IsManagerOrReadOnly,IsManager
 
 class MyTokenObtainPairViews(TokenObtainPairView):
     serializer_class=MyTokenObtainPairSerializer
     
+    
+class AssignTaskView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsManager]
+
+    def post(self, request):
+        if not request.user.is_staff:
+            raise PermissionDenied("Only managers can assign tasks.")
+        
+        serializer = TodosSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(assigned_by=request.user)
+        return Response(serializer.data)
 
 # view for registering users
 class RegisterView(APIView):
     def post(self, request):
-        serializer = UserSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        send_otp_via_mail(serializer.data['email'])
-        return Response(serializer.data)
+        serializer = UserRegistrationSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            send_otp_via_mail(serializer.data['email'])
+            if serializer.validated_data['user_type'] == 'manager':
+                return Response({"message": "Manager registration request submitted. Awaiting approval."}, status=status.HTTP_201_CREATED)
+            return Response({"message": "Employee registered successfully"}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 class ResendOtp(APIView):
     def post(self,request):
@@ -72,6 +88,7 @@ class VerifyOTPView(APIView):
                 },status=status.HTTP_200_OK)
             user.is_active=True
             user.otp = None
+            user.otp_created_at = None
             user.save()
             return Response({
                     "message":"user verified successfully"
@@ -139,17 +156,16 @@ class ResetPasswordView(APIView):
         },status=status.HTTP_400_BAD_REQUEST)
 
 class TodosViewSet(viewsets.ModelViewSet):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsManagerOrReadOnly]
     serializer_class = TodosSerializer
 
     def get_queryset(self):
-        return Todo.objects.filter(user=self.request.user)
+        return Todo.objects.filter(assigned_to=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        serializer.save(assigned_to=self.request.user)
 
     def check_object_permissions(self, request, obj):
-        if obj.user != request.user:
+        if obj.assigned_to != request.user:
             raise PermissionDenied("You do not have permission to access this todo.")
-    
     

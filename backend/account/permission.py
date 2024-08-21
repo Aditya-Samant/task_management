@@ -12,4 +12,4 @@ class IsManagerOrReadOnly(permissions.BasePermission):
 class IsManager(permissions.BasePermission):
     def has_permission(self, request, view):
         # Check if the user is a manager
-        return request.user.is_manager
+        return request.user.is_staff

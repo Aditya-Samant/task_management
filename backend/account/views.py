@@ -1,3 +1,5 @@
+import os
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework import viewsets, permissions
@@ -7,9 +9,11 @@ from .serializers import *
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .serializers import MyTokenObtainPairSerializer
-from .models import Todo,UserData
+from .models import UserData
+from .models import Todo
 from .email import send_otp_via_mail
-from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from django.dispatch import receiver
+from django.db.models.signals import post_delete
 from rest_framework import status
 from rest_framework.response import Response
 from django.core.mail import send_mail
@@ -18,28 +22,14 @@ from .permission import IsManagerOrReadOnly,IsManager
 
 class MyTokenObtainPairViews(TokenObtainPairView):
     serializer_class=MyTokenObtainPairSerializer
-    
-    
-class AssignTaskView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsManager]
 
-    def post(self, request):
-        if not request.user.is_staff:
-            raise PermissionDenied("Only managers can assign tasks.")
-        
-        serializer = TodosSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save(assigned_by=request.user)
-        return Response(serializer.data)
-
-# view for registering users
 class RegisterView(APIView):
     def post(self, request):
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
             send_otp_via_mail(serializer.data['email'])
-            if serializer.validated_data['user_type'] == 'manager':
+            if serializer.data['is_staff']:
                 return Response({"message": "Manager registration request submitted. Awaiting approval."}, status=status.HTTP_201_CREATED)
             return Response({"message": "Employee registered successfully"}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -155,17 +145,54 @@ class ResetPasswordView(APIView):
             "message": serializer.errors
         },status=status.HTTP_400_BAD_REQUEST)
 
-class TodosViewSet(viewsets.ModelViewSet):
-    permission_classes = [permissions.IsAuthenticated, IsManagerOrReadOnly]
-    serializer_class = TodosSerializer
+class ManagerEmployeeListView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsManager]
+    def get(self, request):
+        active_employees = UserData.objects.filter(is_active=True,is_staff=False)
+        serializer = UserSerializer(active_employees, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
-    def get_queryset(self):
-        return Todo.objects.filter(assigned_to=self.request.user)
+class AssignTaskView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsManager]
 
-    def perform_create(self, serializer):
-        serializer.save(assigned_to=self.request.user)
+    def post(self, request):
+        if not request.user.is_staff:
+            raise PermissionDenied("Only managers can assign tasks.")
+        
+        serializer = TodoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(assigned_by=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    def check_object_permissions(self, request, obj):
-        if obj.assigned_to != request.user:
-            raise PermissionDenied("You do not have permission to access this todo.")
-    
+    def get(self, request):
+        if not request.user.is_staff:
+            raise PermissionDenied("Only managers can view assigned tasks.")
+        
+        todos = Todo.objects.filter(assigned_by=request.user)
+        serializer = TodoSerializer(todos, many=True)
+        return Response(serializer.data)
+
+class EmployeeTaskView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        todos = Todo.objects.filter(assigned_to=request.user)
+        serializer = TodoSerializer(todos, many=True)
+        return Response(serializer.data)
+
+    def patch(self, request, pk):
+        todo = get_object_or_404(Todo, pk=pk, assigned_to=request.user)
+        serializer = PartialTodoSerializer(todo, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+@receiver(post_delete, sender=Todo)
+def auto_delete_file_on_delete(sender, instance, **kwargs):
+    """
+    Deletes file from filesystem
+    when corresponding `Todo` object is deleted.
+    """
+    if instance.image:
+        if os.path.isfile(instance.image.path):
+            os.remove(instance.image.path)

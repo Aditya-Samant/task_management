@@ -39,26 +39,36 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
-    user_type = serializers.ChoiceField(choices=[('employee', 'Employee'), ('manager', 'Manager')], write_only=True)
-
     class Meta:
         model = UserData
-        fields = ["id", "email", "name", "password", "user_type"]
+        fields = ["id", "email", "name", "password", "is_staff"]
         extra_kwargs = {'password': {'write_only': True}}
 
     def create(self, validated_data):
-        user_type = validated_data.pop('user_type')
-        user = UserData.objects.create(
+        user = UserData(
             email=validated_data["email"], 
-            name=validated_data["name"]
+            name=validated_data["name"],
+            is_staff=validated_data['is_staff']
         )
         user.set_password(validated_data["password"])
-        if user_type == 'manager':
-            user.is_staff = True  # Assuming is_staff indicates manager privileges
-            user.is_active = False  # Manager needs approval
+        if user.is_staff:
             user.is_approved = False  # Manager needs approval
         user.save()
         return user
+
+
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserData
+        fields = ['id',  'email', 'name', 'is_active']
+
+class PartialTodoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Todo
+        fields = ['image', 'status']
+        read_only_fields = [field.name for field in Todo._meta.fields if field.name not in ['image', 'status']]
+
 
 class VerifyOtpSerializer(serializers.Serializer):
     email=serializers.EmailField()
@@ -75,8 +85,20 @@ class ResetPasswordSerializer(serializers.Serializer):
     otp = serializers.CharField(max_length=6)
     new_password = serializers.CharField()
 
-class TodosSerializer(serializers.ModelSerializer):
+class TodoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Todo
-        exclude = ["assigned_by","assigned_to"]
-        read_only_fields = ["id"]
+        # fields = "__all__" 
+        exclude = ["assigned_by"]
+        # read_only_fields = ["id","assigned_by","assigned_to"]
+    
+    def get_image_url(self, obj):
+        if obj.image:
+            return obj.image.url
+        return None
+    
+    def save(self, **kwargs):
+        request = self.context.get('request')
+        if request and not self.instance:
+            self.validated_data['assigned_by'] = request.user
+        return super().save(**kwargs)

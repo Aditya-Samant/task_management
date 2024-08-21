@@ -14,7 +14,7 @@ class UserData(AbstractUser):
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["username"]
     is_active = models.BooleanField(default=False)
-    is_staff = models.BooleanField(default=False)
+    is_staff = models.BooleanField()
     is_approved = models.BooleanField(default=True)
     def __str__(self):
         return str(self.email)
@@ -26,6 +26,7 @@ class Todo(models.Model):
     entry_date = models.DateField(default=date.today)
     due_date = models.DateField(default=date.today)
     status = models.BooleanField(default=False)
+    image = models.ImageField(upload_to='todo_images/', null=True, blank=True)  # Add this line
 
     def __str__(self):
         return str(self.title)

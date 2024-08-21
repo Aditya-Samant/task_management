@@ -1,11 +1,9 @@
 from django.urls import path,include
 from account.views import *
-from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
-router = DefaultRouter()
-router.register(r'todos', TodosViewSet, basename='todos')
+
 
 urlpatterns = [
     path('account/register/', RegisterView.as_view(), name="sign_up"),
@@ -15,5 +13,9 @@ urlpatterns = [
     path('account/reset-password/', ResetPasswordView.as_view(), name='reset_password'),
     path('account/login/', MyTokenObtainPairViews.as_view(), name='token_obtain_pair'),
     path('account/login/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    path('',include(router.urls)),   
+    path('todos/assign/', AssignTaskView.as_view(), name='assign_task'),
+    path('todos/', EmployeeTaskView.as_view(), name='employee_tasks'),
+    path('todos/<int:pk>/', EmployeeTaskView.as_view(), name='update_task'),
+    path('employee/', ManagerEmployeeListView.as_view(), name='update_task'),
 ]
+

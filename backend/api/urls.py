@@ -14,8 +14,9 @@ urlpatterns = [
     path('account/login/', MyTokenObtainPairViews.as_view(), name='token_obtain_pair'),
     path('account/login/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('todos/assign/', AssignTaskView.as_view(), name='assign_task'),
+    path('assignedtask/<int:user_id>/', AssignTaskView.as_view(), name='assign-task-user'),
     path('todos/', EmployeeTaskView.as_view(), name='employee_tasks'),
     path('todos/<int:pk>/', EmployeeTaskView.as_view(), name='update_task'),
-    path('employee/', ManagerEmployeeListView.as_view(), name='update_task'),
+    path('employee/', ManagerEmployeeListView.as_view(), name='view_employee'),
 ]
 

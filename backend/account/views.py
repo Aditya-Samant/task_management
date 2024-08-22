@@ -164,13 +164,16 @@ class AssignTaskView(APIView):
         serializer.save(assigned_by=request.user)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    def get(self, request):
+    def get(self, request, user_id=None):
         if not request.user.is_staff:
             raise PermissionDenied("Only managers can view assigned tasks.")
         
-        todos = Todo.objects.filter(assigned_by=request.user)
-        serializer = TodoSerializer(todos, many=True)
-        return Response(serializer.data)
+        if user_id:
+            todos = Todo.objects.filter(assigned_by=request.user, assigned_to=user_id)
+            serializer = TodoSerializer(todos, many=True)
+            return Response(serializer.data)
+        else:
+            return Response({"detail": "No user ID provided."}, status=status.HTTP_400_BAD_REQUEST)
 
 class EmployeeTaskView(APIView):
     permission_classes = [permissions.IsAuthenticated]
